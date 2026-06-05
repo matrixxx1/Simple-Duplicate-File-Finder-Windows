@@ -1,0 +1,5 @@
+Simple Duplicate File Finder Privacy Policy
+
+Simple Duplicate File Finder is designed as a local Windows utility. This initial version does not require an account, does not send user files to a cloud service, and does not sell personal data.
+
+Data handled by the app remains on the user's device unless the user separately chooses to export or share files through Windows.
