@@ -1,7 +1,7 @@
-using System.Windows;
+using WpfApp = System.Windows.Application;
 
 namespace SimpleDuplicateFileFinder;
 
-public partial class App : Application
+public partial class App : WpfApp
 {
 }

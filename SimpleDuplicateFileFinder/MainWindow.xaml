@@ -6,7 +6,8 @@
         Height="720"
         MinWidth="900"
         MinHeight="620"
-        Background="#F8FAFC">
+        Background="#F8FAFC"
+        Icon="pack://application:,,,/Assets/app-icon.png">
     <Window.Resources>
         <Style TargetType="Button">
             <Setter Property="Margin" Value="0,0,10,10" />
@@ -21,10 +22,16 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="10" />
         </Style>
-        <Style x:Key="FeatureText" TargetType="TextBlock">
-            <Setter Property="Margin" Value="0,0,0,10" />
+        <Style x:Key="PanelHeader" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#0F172A" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="SectionText" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#334155" />
             <Setter Property="FontSize" Value="14" />
+            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
     </Window.Resources>
     <Grid>
@@ -37,7 +44,7 @@
         <Border Grid.Row="0" Background="#2563EB" Padding="28,24">
             <StackPanel>
                 <TextBlock Text="Simple Duplicate File Finder" Foreground="White" FontSize="30" FontWeight="Bold" />
-                <TextBlock Text="Find duplicate files quickly by size, name, and hash." Foreground="#E0F2FE" FontSize="16" Margin="0,6,0,0" />
+                <TextBlock Text="Find duplicates by size + SHA-256 hash, inspect safely, and cleanup by delete or quarantine." Foreground="#E0F2FE" FontSize="16" Margin="0,6,0,0" />
             </StackPanel>
         </Border>
 
@@ -52,37 +59,122 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Text="Workflow" FontSize="21" FontWeight="SemiBold" Foreground="#0F172A" />
-                    <TextBlock Grid.Row="1" Text="Pick folders, scan file groups, review likely duplicates, and prepare safe cleanup notes." TextWrapping="Wrap" Foreground="#475569" FontSize="14" Margin="0,8,0,18" />
+                    <TextBlock Style="{StaticResource PanelHeader}" Text="Scan &amp; Configuration" />
+                    <TextBlock Grid.Row="1"
+                               Text="Pick folders, tune size/type filters, run a deep scan, and review grouped duplicate sets before taking cleanup actions."
+                               Style="{StaticResource SectionText}"
+                               Margin="0,0,0,10" />
 
-                    <Grid Grid.Row="2">
+                    <Border Grid.Row="2" BorderBrush="#E2E8F0" BorderThickness="1" Padding="12" Background="#F8FAFC">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Row="0" Text="Folders to scan" Foreground="#0F172A" FontWeight="SemiBold" Margin="0,0,0,6" />
+                            <WrapPanel Grid.Row="1" Margin="0,0,0,12">
+                                <Button Content="Add Folder..." Width="120" Click="OnAddFolderClick" />
+                                <Button Content="Clear Folders" Width="120" Click="OnClearFoldersClick" />
+                                <Button Content="Remove Selected" Width="130" Click="OnRemoveFolderClick" />
+                            </WrapPanel>
+                            <ListBox x:Name="FoldersList" Grid.Row="2" Grid.ColumnSpan="2" Height="95" BorderBrush="#CBD5E1" BorderThickness="1" />
+
+                            <Grid Grid.Row="3" Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Min size (KB)" Foreground="#334155" />
+                                    <TextBox x:Name="MinSizeTextBox" Text="0" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                                    <TextBlock Text="Extensions (comma)" Foreground="#334155" />
+                                    <TextBox x:Name="ExtensionFilterTextBox" Text="*.*" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="12,0,0,0">
+                                    <TextBlock Text="Sort groups by" Foreground="#334155" />
+                                    <ComboBox x:Name="SortModeComboBox" SelectedIndex="0">
+                                        <ComboBoxItem>Wasted Space</ComboBoxItem>
+                                        <ComboBoxItem>File Size</ComboBoxItem>
+                                        <ComboBoxItem>Path</ComboBoxItem>
+                                    </ComboBox>
+                                </StackPanel>
+                                <WrapPanel Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                    <Button Content="Run Scan" Width="100" Height="35" Click="OnRunScanClick" />
+                                    <Button Content="Cancel Scan" Width="110" Height="35" Click="OnCancelScanClick" />
+                                </WrapPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="3">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <WrapPanel>
-                    <Button Content="Add Scan Folder" Click="OnActionButtonClick" />
-                    <Button Content="Run Duplicate Scan" Click="OnActionButtonClick" />
-                    <Button Content="Export Cleanup Plan" Click="OnActionButtonClick" />
+                            <Button Content="Export CSV Report" Width="150" Click="OnExportReportClick" />
+                            <Button Content="Keep Newest, Delete Others" Width="190" Click="OnKeepNewestClick" />
+                            <Button Content="Keep Oldest, Delete Others" Width="190" Click="OnKeepOldestClick" />
+                            <Button Content="Delete Selected" Width="130" Click="OnDeleteSelectedClick" />
+                            <Button Content="Move Selected to Quarantine" Width="210" Click="OnMoveToQuarantineClick" />
                         </WrapPanel>
-                        <ListBox x:Name="ActivityList" Grid.Row="1" BorderBrush="#E2E8F0" BorderThickness="1" Margin="0,8,0,0" />
+                        <Grid Grid.Row="1" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3*" />
+                                <ColumnDefinition Width="2*" />
+                            </Grid.ColumnDefinitions>
+        <ListBox x:Name="GroupsList"
+                                     SelectionChanged="OnGroupSelectionChanged"
+                                     DisplayMemberPath="DisplayName"
+                                     BorderBrush="#E2E8F0"
+                                     BorderThickness="1"
+                                     Margin="0,0,8,0" />
+                            <ListBox x:Name="ActivityList" Grid.Column="1" BorderBrush="#E2E8F0" BorderThickness="1" />
+                        </Grid>
                     </Grid>
                 </Grid>
             </Border>
 
             <Border Grid.Column="1" Background="#F1F5F9" BorderBrush="#E2E8F0" BorderThickness="1" Padding="22" Margin="18,0,0,0">
                 <StackPanel>
-                    <TextBlock Text="Initial app scope" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,14" />
-            <TextBlock Text="Folder-based duplicate scan queue" Style="{StaticResource FeatureText}" />
-            <TextBlock Text="Size and hash comparison workflow" Style="{StaticResource FeatureText}" />
-            <TextBlock Text="Keep/delete review list" Style="{StaticResource FeatureText}" />
-            <TextBlock Text="Local-only cleanup planning" Style="{StaticResource FeatureText}" />
-                    <Separator Margin="0,10,0,18" />
-                    <TextBlock Text="Store readiness" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,10" />
-                    <TextBlock Text="Store-Assets includes listing draft, privacy text, and submission checklist. Package identity still needs the reserved Partner Center name before final MSIX upload." TextWrapping="Wrap" Foreground="#475569" />
+                    <TextBlock Style="{StaticResource PanelHeader}" Text="Selected Duplicate Set" />
+                    <TextBlock Text="Choose a duplicate group left to view file-level details. Mark files to remove and then execute one of the cleanup actions." Style="{StaticResource SectionText}" Margin="0,0,0,14" />
+
+                    <DataGrid x:Name="FileGrid"
+                              AutoGenerateColumns="False"
+                              CanUserAddRows="False"
+                              CanUserDeleteRows="False"
+                              IsReadOnly="False"
+                              Height="520">
+                        <DataGrid.Columns>
+                            <DataGridCheckBoxColumn Header="Delete" Binding="{Binding MarkForDeletion}" Width="65" />
+                            <DataGridTextColumn Header="File" Binding="{Binding Path}" Width="2*" />
+                            <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="100" />
+                            <DataGridTextColumn Header="Modified" Binding="{Binding LastModified}" Width="130" />
+                            <DataGridTextColumn Header="Hash" Binding="{Binding HashPrefix}" Width="110" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <Separator Margin="0,12,0,12" />
+                    <TextBlock x:Name="SummaryText" Text="No duplicate groups selected." Style="{StaticResource SectionText}" FontWeight="SemiBold" />
+                    <TextBlock Text="Tip: Use Keep/Move actions for quick cleanup and still review before committing changes."
+                               Style="{StaticResource SectionText}"
+                               Foreground="#475569" Margin="0,6,0,0" />
                 </StackPanel>
             </Border>
         </Grid>
