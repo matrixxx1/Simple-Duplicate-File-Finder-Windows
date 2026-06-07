@@ -1,0 +1,46 @@
+<Window x:Class="SimpleDuplicateFileFinder.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About Simple Duplicate File Finder"
+        Width="820"
+        Height="620"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="#F8FAFC">
+    <Grid Margin="22">
+        <StackPanel>
+            <TextBlock Text="Simple Duplicate File Finder" FontSize="28" FontWeight="Bold" Foreground="#0F172A" />
+            <TextBlock Text="Find duplicates with confidence. Keep what matters, remove what doesn't belong." Margin="0,6,0,18" FontSize="14" Foreground="#334155" />
+
+            <TextBlock Text="How to use" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,10" />
+            <TextBlock TextWrapping="Wrap" FontSize="14" Foreground="#334155">
+                1) Add one or more folders to scan.
+                2) Set minimum size and extensions if needed.
+                3) Run scan to find duplicate candidates by size and SHA-256 hash.
+                4) Select a duplicate set and mark entries in the table.
+                5) Use Keep Newest/Keep Oldest to plan cleanup.
+                6) Delete marked items or move them to quarantine.
+                7) Export CSV to create a review report.
+            </TextBlock>
+
+            <Separator Margin="0,16,0,16" />
+            <TextBlock Text="Trial and licensing" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,10" />
+            <TextBlock x:Name="TrialStatusText" FontSize="14" TextWrapping="Wrap" Foreground="#334155" />
+            <TextBlock Text="Trial is for 15 full days and includes scan, dedupe detection, grouping, CSV export, and cleanup actions."
+                       TextWrapping="Wrap"
+                       Foreground="#334155"
+                       Margin="0,6,0,0" />
+            <TextBlock Text="To unlock full version permanently, enter the license key in the main window."
+                       TextWrapping="Wrap"
+                       Foreground="#334155"
+                       Margin="0,6,0,0" />
+
+            <Separator Margin="0,16,0,16" />
+            <TextBlock Text="Logging and safety" FontSize="18" FontWeight="SemiBold" Foreground="#0F172A" Margin="0,0,0,10" />
+            <TextBlock TextWrapping="Wrap" FontSize="14" Foreground="#334155">
+                Every scan action, folder change, file operation, export, and activation attempt is logged locally.
+                Open the Logs folder from the main page for troubleshooting and troubleshooting evidence.
+            </TextBlock>
+        </StackPanel>
+    </Grid>
+</Window>

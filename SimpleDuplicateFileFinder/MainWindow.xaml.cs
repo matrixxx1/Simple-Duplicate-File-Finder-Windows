@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -15,17 +17,33 @@ namespace SimpleDuplicateFileFinder;
 
 public partial class MainWindow : Window
 {
-    private readonly List<DuplicateGroupViewModel> _scanResults = new();
-    private readonly ObservableCollection<DuplicateGroupViewModel> _displayedGroups = new();
+    private const int TrialDays = 15;
+    private const string FullLicenseSample = "SDF-FULL-UNLOCK-2026";
+
+    private readonly List<DuplicateGroupViewModel> _scanResults = [];
+    private readonly ObservableCollection<DuplicateGroupViewModel> _displayedGroups = [];
+    private readonly FileLogger _logger;
     private CancellationTokenSource? _scanCancellation;
+    private AppState _state;
+    private readonly string _stateFilePath;
 
     public MainWindow()
     {
         InitializeComponent();
+        _stateFilePath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SimpleDuplicateFileFinder",
+            "state.json");
+
+        _logger = new FileLogger();
+        _state = LoadState();
+
         GroupsList.ItemsSource = _displayedGroups;
         ActivityList.ItemsSource = new ObservableCollection<string>();
         FileGrid.ItemsSource = null;
+
         SummaryText.Text = "Ready. Add folders and run scan.";
+        RefreshTrialUi();
         AddActivity("Duplicate finder initialized.");
     }
 
@@ -55,20 +73,21 @@ public partial class MainWindow : Window
             var extensionFilter = ParseExtensions(ExtensionFilterTextBox.Text);
 
             AddActivity($"Queued {folders.Length} folder(s).");
+            LogAudit("Run scan started.");
 
             var matchedFiles = await Task.Run(
                 () => EnumerateFiles(folders, minBytes, extensionFilter, token),
                 token);
 
             token.ThrowIfCancellationRequested();
-            AddActivity($"Found {matchedFiles.Count:n0} candidate files after size/type filters.");
+            AddActivity($"Found {matchedFiles.Count:n0} candidate files after filters.");
 
             var sizeBuckets = matchedFiles
                 .GroupBy(x => x.SizeBytes)
                 .Where(g => g.Count() > 1)
                 .ToList();
 
-            AddActivity($"Size bucketing identified {sizeBuckets.Count:n0} potential duplicate groups.");
+            AddActivity($"Size bucketing found {sizeBuckets.Count:n0} possible sets.");
 
             var groups = await Task.Run(
                 () => HashAndBuildGroups(sizeBuckets, token),
@@ -76,21 +95,24 @@ public partial class MainWindow : Window
 
             _scanResults.AddRange(groups);
             ApplySorting();
+            LogAudit($"Scan completed. Duplicate sets: {_scanResults.Count}");
             AddActivity(_scanResults.Count > 0
                 ? $"Found {_scanResults.Count} duplicate set(s)."
                 : "No duplicate sets found.");
             SummaryText.Text = _scanResults.Count > 0
                 ? "Scan complete. Select a group to review files."
-                : "No duplicate sets for your current filters.";
+                : "No duplicate sets for current filters.";
         }
         catch (OperationCanceledException)
         {
-            AddActivity("Scan was canceled.");
+            AddActivity("Scan canceled.");
+            LogAudit("Scan canceled by user.");
             SummaryText.Text = "Scan canceled.";
         }
         catch (Exception ex)
         {
             AddActivity($"Scan failed: {ex.Message}");
+            LogAudit($"Scan failed: {ex}");
             SummaryText.Text = "Scan failed.";
         }
         finally
@@ -106,22 +128,32 @@ public partial class MainWindow : Window
         {
             _scanCancellation.Cancel();
             AddActivity("Cancel requested.");
+            LogAudit("Scan cancel requested.");
+        }
+        else
+        {
+            AddActivity("No active scan to cancel.");
         }
     }
 
     private void OnAddFolderClick(object sender, RoutedEventArgs e)
     {
         using var dlg = new FolderBrowserDialog { Description = "Select folder to scan" };
-        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK) return;
-
-        if (!FoldersList.Items.Cast<string>().Contains(dlg.SelectedPath, StringComparer.OrdinalIgnoreCase))
+        if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK)
         {
-            FoldersList.Items.Add(dlg.SelectedPath);
-            AddActivity($"Added folder: {dlg.SelectedPath}");
+            return;
+        }
+
+        var selected = dlg.SelectedPath;
+        if (!FoldersList.Items.Cast<string>().Contains(selected, StringComparer.OrdinalIgnoreCase))
+        {
+            FoldersList.Items.Add(selected);
+            AddActivity($"Added folder: {selected}");
+            LogAudit($"Folder added: {selected}");
         }
         else
         {
-            AddActivity("Folder already added.");
+            AddActivity("Folder already in list.");
         }
     }
 
@@ -129,12 +161,12 @@ public partial class MainWindow : Window
     {
         FoldersList.Items.Clear();
         AddActivity("Folder list cleared.");
+        LogAudit("Folder list cleared.");
     }
 
     private void OnRemoveFolderClick(object sender, RoutedEventArgs e)
     {
-        var selected = FoldersList.SelectedItem as string;
-        if (selected is null)
+        if (FoldersList.SelectedItem is not string selected)
         {
             AddActivity("Select a folder to remove.");
             return;
@@ -142,6 +174,7 @@ public partial class MainWindow : Window
 
         FoldersList.Items.Remove(selected);
         AddActivity($"Removed folder: {selected}");
+        LogAudit($"Folder removed: {selected}");
     }
 
     private void OnExportReportClick(object sender, RoutedEventArgs e)
@@ -166,13 +199,36 @@ public partial class MainWindow : Window
         }
 
         AddActivity($"Report exported: {path}");
+        LogAudit($"Exported duplicate report: {path}");
     }
 
-    private void OnKeepNewestClick(object sender, RoutedEventArgs e) => ApplyRetentionStrategy(keepNewest: true);
-    private void OnKeepOldestClick(object sender, RoutedEventArgs e) => ApplyRetentionStrategy(keepNewest: false);
+    private void OnKeepNewestClick(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureCleanupAllowed())
+        {
+            return;
+        }
+
+        ApplyRetentionStrategy(keepNewest: true);
+    }
+
+    private void OnKeepOldestClick(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureCleanupAllowed())
+        {
+            return;
+        }
+
+        ApplyRetentionStrategy(keepNewest: false);
+    }
 
     private async void OnDeleteSelectedClick(object sender, RoutedEventArgs e)
     {
+        if (!EnsureCleanupAllowed())
+        {
+            return;
+        }
+
         var candidates = GetMarkedFiles();
         if (!candidates.Any())
         {
@@ -181,6 +237,7 @@ public partial class MainWindow : Window
         }
 
         AddActivity($"Deleting {candidates.Count} file(s)...");
+        LogAudit($"Delete selected started. Count={candidates.Count}");
         await Task.Run(() =>
         {
             foreach (var item in candidates)
@@ -188,20 +245,28 @@ public partial class MainWindow : Window
                 try
                 {
                     File.Delete(item.Path);
+                    LogAudit($"Deleted file: {item.Path}");
                 }
                 catch (Exception ex)
                 {
                     Dispatcher.Invoke(() => AddActivity($"Failed delete: {Path.GetFileName(item.Path)} - {ex.Message}"));
+                    LogAudit($"Delete failed: {item.Path} - {ex.Message}");
                 }
             }
         });
 
         RefreshAfterMutations();
         AddActivity("Deletion pass finished.");
+        LogAudit("Delete selected finished.");
     }
 
     private async void OnMoveToQuarantineClick(object sender, RoutedEventArgs e)
     {
+        if (!EnsureCleanupAllowed())
+        {
+            return;
+        }
+
         var candidates = GetMarkedFiles();
         if (!candidates.Any())
         {
@@ -214,6 +279,7 @@ public partial class MainWindow : Window
             "SimpleDuplicateFileFinder",
             "Quarantine");
         Directory.CreateDirectory(quarantineRoot);
+        AddActivity("Moving selected files to quarantine.");
 
         await Task.Run(() =>
         {
@@ -228,16 +294,69 @@ public partial class MainWindow : Window
                 try
                 {
                     File.Move(item.Path, targetPath);
+                    LogAudit($"Moved to quarantine: {item.Path} -> {targetPath}");
                 }
                 catch (Exception ex)
                 {
                     Dispatcher.Invoke(() => AddActivity($"Move failed: {Path.GetFileName(item.Path)} - {ex.Message}"));
+                    LogAudit($"Move failed: {item.Path} - {ex.Message}");
                 }
             }
         });
 
         RefreshAfterMutations();
         AddActivity("Move-to-quarantine pass finished.");
+        LogAudit("Move selected finished.");
+    }
+
+    private void OnActivateLicenseClick(object sender, RoutedEventArgs e)
+    {
+        var candidate = LicenseKeyTextBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            AddActivity("Enter a license key or continue with trial.");
+            return;
+        }
+
+        if (!string.Equals(candidate, FullLicenseSample, StringComparison.OrdinalIgnoreCase))
+        {
+            AddActivity("Invalid license key. Use a valid key to unlock full version.");
+            LogAudit("License activation failed.");
+            return;
+        }
+
+        _state.FullVersion = true;
+        _state.LicenseKey = candidate;
+        SaveState(_state);
+        RefreshTrialUi();
+        AddActivity("License activated. Full version unlocked.");
+        LogAudit("License activated.");
+        LicenseKeyTextBox.Text = string.Empty;
+    }
+
+    private void OnAboutClick(object sender, RoutedEventArgs e)
+    {
+        var about = new AboutWindow(
+            isTrialMode: !_state.FullVersion,
+            trialDaysLeft: Math.Max(0, (int)Math.Ceiling((_state.InstallDateUtc.AddDays(TrialDays) - DateTime.UtcNow).TotalDays)),
+            isTrialExpired: IsTrialExpired(_state),
+            appVersion: "1.0.0");
+        about.Owner = this;
+        about.ShowDialog();
+        LogAudit("Opened about dialog.");
+    }
+
+    private void OnViewLogsClick(object sender, RoutedEventArgs e)
+    {
+        var folder = Path.GetDirectoryName(_logger.LogPath);
+        if (folder is null || !Directory.Exists(folder))
+        {
+            AddActivity("No logs found yet.");
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{folder}\"") { UseShellExecute = true });
+        LogAudit("Opened log folder.");
     }
 
     private void OnGroupSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -249,14 +368,31 @@ public partial class MainWindow : Window
         }
 
         FileGrid.ItemsSource = selected.Files;
-        SummaryText.Text = $"{selected.Files.Count} files • {FormatSize(selected.SizeBytes)} each • Wasted: {FormatSize(selected.WastedBytes)}";
+        SummaryText.Text = $"{selected.Files.Count} files, each {FormatSize(selected.SizeBytes)}. Wasted space: {FormatSize(selected.WastedBytes)}.";
+    }
+
+    private bool EnsureCleanupAllowed()
+    {
+        if (!IsTrialExpired(_state))
+        {
+            return true;
+        }
+
+        if (_state.FullVersion)
+        {
+            return true;
+        }
+
+        AddActivity("Trial expired. Enter a full license key to unlock cleanup actions.");
+        RefreshTrialUi();
+        return false;
     }
 
     private void ApplyRetentionStrategy(bool keepNewest)
     {
         if (GroupsList.SelectedItem is not DuplicateGroupViewModel selected)
         {
-            AddActivity("Select one duplicate group first.");
+            AddActivity("Select one duplicate set first.");
             return;
         }
 
@@ -271,10 +407,12 @@ public partial class MainWindow : Window
         {
             file.MarkForDeletion = !ReferenceEquals(file, keep);
         }
+
         FileGrid.Items.Refresh();
         AddActivity(keepNewest
             ? "Retention set: keep newest file in selected set."
             : "Retention set: keep oldest file in selected set.");
+        LogAudit("Retention action applied.");
     }
 
     private List<FileRow> GetMarkedFiles()
@@ -296,12 +434,12 @@ public partial class MainWindow : Window
             foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
             {
                 token.ThrowIfCancellationRequested();
-                string extension = Path.GetExtension(file);
+                string extension = Path.GetExtension(file).ToLowerInvariant();
 
                 try
                 {
                     var info = new FileInfo(file);
-                    if (info.Length < minBytes || (extensionFilter.Count > 0 && !extensionFilter.Contains("*.*") && !extensionFilter.Contains(extension.ToLowerInvariant())))
+                    if (info.Length < minBytes || (extensionFilter.Count > 0 && !extensionFilter.Contains("*.*") && !extensionFilter.Contains(extension)))
                     {
                         continue;
                     }
@@ -317,6 +455,7 @@ public partial class MainWindow : Window
                 catch
                 {
                     AddActivity($"Skipped inaccessible file: {file}");
+                    LogAudit($"Skipped inaccessible file: {file}");
                 }
             }
         }
@@ -339,9 +478,10 @@ public partial class MainWindow : Window
                 token.ThrowIfCancellationRequested();
                 var hash = ComputeHash(file.Path, sha);
                 file.Hash = hash;
+
                 if (!byHash.TryGetValue(hash, out var list))
                 {
-                    list = new List<FileScanItem>();
+                    list = [];
                     byHash[hash] = list;
                 }
                 list.Add(file);
@@ -376,6 +516,7 @@ public partial class MainWindow : Window
         {
             _displayedGroups.Add(group);
         }
+
         AddActivity($"Displaying {_displayedGroups.Count} duplicate set(s).");
     }
 
@@ -408,9 +549,9 @@ public partial class MainWindow : Window
         }
 
         ApplySorting();
-        if (_displayedGroups.Count > 0 && FileGrid.ItemsSource is not null)
+        if (_displayedGroups.Count > 0 && FileGrid.ItemsSource is not null && GroupsList.SelectedItem is not null)
         {
-            FileGrid.ItemsSource = _displayedGroups.First().Files;
+            FileGrid.ItemsSource = (_displayedGroups.FirstOrDefault(g => ReferenceEquals(g, (DuplicateGroupViewModel)GroupsList.SelectedItem)) ?? _displayedGroups.First()).Files;
         }
 
         SummaryText.Text = _scanResults.Count == 0
@@ -418,17 +559,66 @@ public partial class MainWindow : Window
             : $"{_scanResults.Count} duplicate set(s) remain.";
     }
 
+    private void RefreshTrialUi()
+    {
+        var isExpired = IsTrialExpired(_state);
+        var isFull = _state.FullVersion;
+
+        if (isFull)
+        {
+            TrialStatusText.Text = "License: Full Version";
+            DeleteButton.IsEnabled = true;
+            QuarantineButton.IsEnabled = true;
+            KeepNewest.IsEnabled = true;
+            KeepOldest.IsEnabled = true;
+            return;
+        }
+
+        if (isExpired)
+        {
+            var installed = _state.InstallDateUtc.ToLocalTime();
+            TrialStatusText.Text = $"Trial expired on {installed.AddDays(TrialDays):d} . Enter license key to continue cleanup.";
+            DeleteButton.IsEnabled = false;
+            QuarantineButton.IsEnabled = false;
+            return;
+        }
+
+        var remaining = Math.Max(0, (int)Math.Ceiling((_state.InstallDateUtc.AddDays(TrialDays) - DateTime.UtcNow).TotalDays));
+        TrialStatusText.Text = $"Trial version: {remaining} of {TrialDays} days remaining (local).";
+        DeleteButton.IsEnabled = true;
+        QuarantineButton.IsEnabled = true;
+        KeepNewest.IsEnabled = true;
+        KeepOldest.IsEnabled = true;
+    }
+
+    private static bool IsTrialExpired(AppState state)
+    {
+        if (state.FullVersion)
+        {
+            return false;
+        }
+
+        return DateTime.UtcNow >= state.InstallDateUtc.AddDays(TrialDays);
+    }
+
     private void AddActivity(string message)
     {
         if (ActivityList.ItemsSource is ObservableCollection<string> list)
         {
             list.Insert(0, $"{DateTime.Now:HH:mm:ss} {message}");
-            if (list.Count > 200)
+            if (list.Count > 250)
             {
                 list.RemoveAt(list.Count - 1);
             }
         }
+
         StatusText.Text = message;
+        _logger.Log(message);
+    }
+
+    private void LogAudit(string message)
+    {
+        _logger.Log($"AUDIT: {message}");
     }
 
     private static long ParseLong(string raw)
@@ -448,6 +638,53 @@ public partial class MainWindow : Window
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return entries.Count == 0 ? new HashSet<string> { "*.*" } : entries;
+    }
+
+    private AppState LoadState()
+    {
+        var defaultState = new AppState
+        {
+            InstallDateUtc = DateTime.UtcNow,
+            FullVersion = false,
+            LicenseKey = null
+        };
+
+        try
+        {
+            if (!File.Exists(_stateFilePath))
+            {
+                SaveState(defaultState);
+                return defaultState;
+            }
+
+            var raw = File.ReadAllText(_stateFilePath);
+            var parsed = JsonSerializer.Deserialize<AppState>(raw);
+            if (parsed is null)
+            {
+                SaveState(defaultState);
+                return defaultState;
+            }
+
+            parsed.InstallDateUtc = parsed.InstallDateUtc == default ? DateTime.UtcNow : parsed.InstallDateUtc;
+            return parsed;
+        }
+        catch
+        {
+            SaveState(defaultState);
+            return defaultState;
+        }
+    }
+
+    private void SaveState(AppState state)
+    {
+        var folder = Path.GetDirectoryName(_stateFilePath);
+        if (!string.IsNullOrWhiteSpace(folder))
+        {
+            Directory.CreateDirectory(folder);
+        }
+
+        var json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(_stateFilePath, json);
     }
 
     private sealed class FileScanItem
@@ -473,14 +710,13 @@ public partial class MainWindow : Window
                 MarkForDeletion = false
             }));
             WastedBytes = (Files.Count - 1) * sizeBytes;
-            SizeBytes = sizeBytes;
         }
 
         public string Hash { get; }
         public long SizeBytes { get; }
         public long WastedBytes { get; set; }
         public ObservableCollection<FileRow> Files { get; }
-        public string DisplayName => $"{Files.Count} files • {FormatSize(SizeBytes)} • {FormatSize(WastedBytes)} wasted";
+        public string DisplayName => $"{Files.Count} files - {FormatSize(SizeBytes)} each - {FormatSize(WastedBytes)} wasted";
     }
 
     private sealed class FileRow : INotifyPropertyChanged
@@ -521,5 +757,61 @@ public partial class MainWindow : Window
         }
 
         return $"{value:F1} {unit[i]}";
+    }
+
+    private sealed class AppState
+    {
+        public DateTime InstallDateUtc { get; set; }
+        public bool FullVersion { get; set; }
+        public string? LicenseKey { get; set; }
+    }
+
+    private sealed class FileLogger
+    {
+        private readonly string _filePath;
+        private readonly string _folder;
+        private const long MaxLogSizeBytes = 4_000_000;
+
+        public FileLogger()
+        {
+            _folder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "SimpleDuplicateFileFinder",
+                "Logs");
+            Directory.CreateDirectory(_folder);
+            _filePath = Path.Combine(_folder, "simpleduplicatefilefinder.log");
+        }
+
+        public string LogPath => _filePath;
+
+        public void Log(string message)
+        {
+            try
+            {
+                RotateIfNeeded();
+                File.AppendAllText(_filePath, $"[{DateTime.UtcNow:O}] {message}{Environment.NewLine}");
+            }
+            catch
+            {
+                // Never block app flow for logging issues.
+            }
+        }
+
+        private void RotateIfNeeded()
+        {
+            if (!File.Exists(_filePath))
+            {
+                return;
+            }
+
+            var file = new FileInfo(_filePath);
+            if (file.Length <= MaxLogSizeBytes)
+            {
+                return;
+            }
+
+            var archive = Path.Combine(_folder, $"simpleduplicatefilefinder_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+            File.Move(_filePath, archive, true);
+        }
     }
 }

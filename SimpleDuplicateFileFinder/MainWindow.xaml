@@ -128,17 +128,17 @@
                         </Grid.RowDefinitions>
                         <WrapPanel>
                             <Button Content="Export CSV Report" Width="150" Click="OnExportReportClick" />
-                            <Button Content="Keep Newest, Delete Others" Width="190" Click="OnKeepNewestClick" />
-                            <Button Content="Keep Oldest, Delete Others" Width="190" Click="OnKeepOldestClick" />
-                            <Button Content="Delete Selected" Width="130" Click="OnDeleteSelectedClick" />
-                            <Button Content="Move Selected to Quarantine" Width="210" Click="OnMoveToQuarantineClick" />
+                            <Button x:Name="KeepNewest" Content="Keep Newest, Delete Others" Width="190" Click="OnKeepNewestClick" />
+                            <Button x:Name="KeepOldest" Content="Keep Oldest, Delete Others" Width="190" Click="OnKeepOldestClick" />
+                            <Button x:Name="DeleteButton" Content="Delete Selected" Width="130" Click="OnDeleteSelectedClick" />
+                            <Button x:Name="QuarantineButton" Content="Move Selected to Quarantine" Width="210" Click="OnMoveToQuarantineClick" />
                         </WrapPanel>
                         <Grid Grid.Row="1" Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="3*" />
                                 <ColumnDefinition Width="2*" />
                             </Grid.ColumnDefinitions>
-        <ListBox x:Name="GroupsList"
+                            <ListBox x:Name="GroupsList"
                                      SelectionChanged="OnGroupSelectionChanged"
                                      DisplayMemberPath="DisplayName"
                                      BorderBrush="#E2E8F0"
@@ -180,7 +180,24 @@
         </Grid>
 
         <Border Grid.Row="2" Background="#E2E8F0" Padding="18,10">
-            <TextBlock x:Name="StatusText" Text="Ready" Foreground="#334155" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Vertical">
+                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="#334155" />
+                    <TextBlock x:Name="TrialStatusText" Text="Trial status loading..." Foreground="#1F2937" FontWeight="SemiBold" Margin="0,4,0,0" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBlock Text="License:" VerticalAlignment="Center" Foreground="#334155" Margin="0,0,8,0" />
+                    <TextBox x:Name="LicenseKeyTextBox" Width="230" Height="30" VerticalContentAlignment="Center" />
+                    <Button Content="Activate License" Width="125" Height="30" Click="OnActivateLicenseClick" Margin="8,0,10,0" />
+                    <Button Content="About" Width="75" Height="30" Click="OnAboutClick" Margin="0,0,8,0" />
+                    <Button Content="View Logs" Width="90" Height="30" Click="OnViewLogsClick" />
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
+  <Identity
+    Name="m3Coding.SimpleDuplicateFileFinder"
+    Publisher="CN=AFF85DD5-3D92-42A5-BA39-3AF6D41B1837"
+    Version="1.0.0.0" />
+
+  <Properties>
+    <DisplayName>Simple Duplicate File Finder</DisplayName>
+    <PublisherDisplayName>m3 Coding</PublisherDisplayName>
+    <Description>Local duplicate file scanner with SHA-256 dedupe grouping and cleanup workflows.</Description>
+    <Logo>Assets/app-icon.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.22631.0" />
+  </Dependencies>
+
+  <Applications>
+    <Application Id="SimpleDuplicateFileFinder"
+                 Executable="SimpleDuplicateFileFinder.exe"
+                 EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Simple Duplicate File Finder"
+        Description="Duplicate file discovery and cleanup utility"
+        Square44x44Logo="Assets/app-icon.png"
+        Square150x150Logo="Assets/app-icon.png"
+        BackgroundColor="transparent" />
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

@@ -1,9 +1,30 @@
 # Store Submission Checklist
 
-- Reserve the exact app name in Partner Center.
-- Update MSIX package identity after reservation.
-- Generate final app icon and Store artwork.
-- Capture screenshots from the running app.
-- Build and verify the MSIX or MSIXUPLOAD package.
-- Upload package, screenshots, listing text, and privacy policy in Partner Center.
-- Confirm age rating and additional testing notes.
+- Reserve app name in Partner Center exactly: "Simple Duplicate File Finder".
+- Confirm these canonical IDs are matched in your submission:
+  - Package name: `m3Coding.SimpleDuplicateFileFinder`
+  - Package publisher: `CN=AFF85DD5-3D92-42A5-BA39-3AF6D41B1837`
+  - Publisher display name: `m3 Coding`
+  - Package Family Name: `m3Coding.SimpleDuplicateFileFinder_8srffngrg4x08`
+  - Store ID: `9PH5RM5F33L4`
+- Package SID:
+  - `S-1-15-2-1091632759-4009558509-1149070012-1655914070-152167534-949565745-2098069570`
+- Set package identity to match reserved name and publisher (after reservation in Partner Center).
+- Confirm $1.99 price is configured for all target regions.
+- Add trial-to-full licensing text from About page and validate 15-day trial behavior.
+- Add Store listing:
+  - Store listing text from `StoreListing.md`.
+  - Privacy policy text from `PrivacyPolicy.txt`.
+- Include required assets under `Store-Assets`:
+  - StoreLogo.png
+  - Square44x44Logo.png
+  - Square150x150Logo.png
+  - Square310x310Logo.png
+  - Wide310x150Logo.png
+  - SplashScreen.png
+- Capture and upload 3+ screenshots:
+  - `Store-Assets\\Screenshots\\screenshot-home.png`
+  - `Store-Assets\\Screenshots\\screenshot-setup.png`
+  - `Store-Assets\\Screenshots\\screenshot-review.png`
+- Build and verify MSIX/package artifacts with package identity and manifest.
+- Verify licensing lock behavior and activity logs in trial expired state.
